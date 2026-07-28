@@ -5,22 +5,93 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
 <title>🫧 Bubble Pop – For Pragya 🌸</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#000; display:flex; justify-content:center; align-items:center;
-         height:100vh; overflow:hidden; font-family:'Segoe UI Emoji',sans-serif; }
-  canvas { display:block; touch-action:none; }
+  :root{
+    color-scheme: dark;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; height:100%; }
+  body {
+    background:
+      radial-gradient(circle at top, rgba(255,120,180,.18), transparent 34%),
+      linear-gradient(135deg, #140b24 0%, #2e1349 100%);
+    display:grid;
+    place-items:center;
+    overflow:hidden;
+    font-family:'Segoe UI Emoji','Apple Color Emoji',sans-serif;
+    padding:clamp(10px, 3vw, 24px);
+    color:#fff;
+  }
+  .app-shell{
+    width:min(100%, 470px);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+  }
+  .phone-frame{
+    position:relative;
+    width:100%;
+    aspect-ratio: 9 / 19.2;
+    max-height:min(92dvh, 860px);
+    border-radius:38px;
+    padding:12px;
+    background: linear-gradient(145deg, #2d223c, #120815);
+    box-shadow: 0 24px 60px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.16);
+    border:1px solid rgba(255,255,255,.14);
+  }
+  .phone-notch{
+    position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    width:120px; height:28px; border-radius:0 0 18px 18px;
+    background:rgba(0,0,0,.75);
+    z-index:3;
+  }
+  .phone-screen{
+    position:relative;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    border-radius:28px;
+    background:#0a0611;
+    border:1px solid rgba(255,255,255,.08);
+  }
+  canvas{
+    display:block;
+    width:100%;
+    height:100%;
+    touch-action:none;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  .phone-home{
+    position:absolute; left:50%; bottom:10px; transform:translateX(-50%);
+    width:110px; height:5px; border-radius:999px;
+    background:rgba(255,255,255,.15);
+    z-index:3;
+  }
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+  <div class="app-shell">
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <canvas id="c"></canvas>
+      </div>
+      <div class="phone-home"></div>
+    </div>
+  </div>
 <script>
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 
 // ── Resize ─────────────────────────────────────────────────────────────────
 function resize(){
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(1, Math.floor(rect.width));
+  const h = Math.max(1, Math.floor(rect.height));
+  canvas.width  = w;
+  canvas.height = h;
 }
 resize();
 window.addEventListener('resize', resize);
@@ -29,23 +100,42 @@ const W = ()=> canvas.width, H = ()=> canvas.height;
 // ── Audio ──────────────────────────────────────────────────────────────────
 const SONGS = ['relax.mp3','relax2.mp3'];
 let audio = null;
-function playRandomSong(){
-  if(audio){ audio.pause(); audio = null; }
-  audio = new Audio(SONGS[Math.floor(Math.random()*SONGS.length)]);
-  audio.volume = 0.35;
-  audio.play().catch(()=>{});
-  audio.onended = playRandomSong;
-}
-
-// pop sound via Web Audio
+let audioUnlocked = false;
 let actx = null;
+
 function getACtx(){
   if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
   return actx;
 }
+
+async function unlockAudio(){
+  if(audioUnlocked) return;
+  try{
+    const ac = getACtx();
+    if(ac.state === 'suspended') await ac.resume();
+    audioUnlocked = true;
+    if(!audio){ playRandomSong(); }
+    else if(audio.paused){ await audio.play(); }
+  }catch(e){}
+}
+
+function playRandomSong(){
+  if(!audioUnlocked) return;
+  if(audio){ audio.pause(); audio.currentTime = 0; }
+  audio = new Audio(SONGS[Math.floor(Math.random()*SONGS.length)]);
+  audio.preload = 'auto';
+  audio.volume = 0.35;
+  audio.playsInline = true;
+  audio.setAttribute('playsinline', 'true');
+  audio.load();
+  audio.play().catch(()=>{});
+  audio.onended = playRandomSong;
+}
+
 function playPop(){
   try{
     const ac = getACtx();
+    if(ac.state === 'suspended') return;
     const o  = ac.createOscillator();
     const g  = ac.createGain();
     o.connect(g); g.connect(ac.destination);
@@ -59,6 +149,7 @@ function playPop(){
 function playMiss(){
   try{
     const ac = getACtx();
+    if(ac.state === 'suspended') return;
     const o  = ac.createOscillator();
     const g  = ac.createGain();
     o.connect(g); g.connect(ac.destination);
@@ -280,12 +371,11 @@ function initGame(){
 initGame();
 
 // ── Input ──────────────────────────────────────────────────────────────────
-function handleTap(cx,cy){
-  // start audio on first tap
+async function handleTap(cx,cy){
+  // unlock audio on first tap so mobile browsers allow playback
   if(!started){
     started=true;
-    playRandomSong();
-    getACtx();
+    await unlockAudio();
   }
   if(state==='playing'){
     for(let b of bubbles){
@@ -314,6 +404,14 @@ canvas.addEventListener('pointerdown', e=>{
   const r=canvas.getBoundingClientRect();
   handleTap(e.clientX-r.left, e.clientY-r.top);
 });
+canvas.addEventListener('touchstart', e=>{
+  e.preventDefault();
+  const t = e.touches[0];
+  if(t){
+    const r=canvas.getBoundingClientRect();
+    handleTap(t.clientX-r.left, t.clientY-r.top);
+  }
+}, {passive:false});
 
 // ── Game Loop ──────────────────────────────────────────────────────────────
 function update(){
@@ -380,19 +478,22 @@ function draw(){
   if(state==='title'){
     const a = titleTimer>60 ? 1 : titleTimer/60;
     ctx.save();
-    ctx.globalAlpha=a*0.6;
+    ctx.globalAlpha=a*0.55;
     ctx.fillStyle='#000';
-    ctx.fillRect(0, H()/2-70, W(), 140);
+    ctx.fillRect(0, H()/2-95, W(), 170);
     ctx.restore();
     ctx.save();
     ctx.globalAlpha=a;
     ctx.textAlign='center';
-    ctx.font=`bold ${Math.min(W()/14,42)}px Segoe UI Emoji`;
-    ctx.fillStyle='#ffc8e6';
+    ctx.font=`bold ${Math.min(W()/11, 36)}px Segoe UI Emoji`;
+    ctx.fillStyle='#ffd2ea';
     ctx.fillText('🌸 For Pragya, with love 🌸', W()/2, H()/2-20);
-    ctx.font=`${Math.min(W()/20,24)}px Segoe UI Emoji`;
-    ctx.fillStyle='#ffe6ff';
-    ctx.fillText('The most perfect person in the universe ✨', W()/2, H()/2+20);
+    ctx.font=`${Math.min(W()/18, 18)}px Segoe UI Emoji`;
+    ctx.fillStyle='#ffe8ff';
+    ctx.fillText('A tiny bubble game made for your phone ✨', W()/2, H()/2+16);
+    ctx.font=`${Math.min(W()/20, 16)}px Segoe UI Emoji`;
+    ctx.fillStyle='#ffc8e6';
+    ctx.fillText('Tap to begin and pop your way to joy 💖', W()/2, H()/2+48);
     ctx.restore();
 
   } else if(state==='playing'){
@@ -402,24 +503,24 @@ function draw(){
 
     // HUD
     ctx.textAlign='left';
-    ctx.font=`bold 20px Segoe UI Emoji`;
-    ctx.fillStyle='#ffccff'; ctx.fillText(`🫧 Popped: ${score}`, 16, 30);
-    ctx.font=`16px Segoe UI Emoji`;
-    ctx.fillStyle='#ffdc96'; ctx.fillText(`🏆 Best: ${highScore}`, 16, 54);
+    ctx.font=`bold ${Math.max(14, Math.min(W()/20, 18))}px Segoe UI Emoji`;
+    ctx.fillStyle='#ffccff'; ctx.fillText(`🫧 Popped: ${score}`, 16, 28);
+    ctx.font=`${Math.max(12, Math.min(W()/26, 14))}px Segoe UI Emoji`;
+    ctx.fillStyle='#ffdc96'; ctx.fillText(`🏆 Best: ${highScore}`, 16, 50);
     const lvl=Math.floor((speedMult-1)/0.12)+1;
-    ctx.fillStyle='#b4ffcc'; ctx.fillText(`⚡ Level ${lvl}`, 16, 74);
+    ctx.fillStyle='#b4ffcc'; ctx.fillText(`⚡ Level ${lvl}`, 16, 70);
 
     // missed dots
     ctx.textAlign='center';
-    ctx.font=`16px Segoe UI Emoji`;
+    ctx.font=`${Math.max(12, Math.min(W()/26, 14))}px Segoe UI Emoji`;
     ctx.fillStyle='#ffb464';
     const dots='●'.repeat(missedCount)+'○'.repeat(3-missedCount);
     ctx.fillText(`Missed: ${dots}`, W()/2, 28);
 
     // hearts
-    const heartX = W()-150;
+    const heartX = W()-112;
     for(let i=0;i<3;i++){
-      drawHeart(heartX + i*44, 52, 14, i<lives, shakeTimer>0 && i===lives);
+      drawHeart(heartX + i*34, 46, 12, i<lives, shakeTimer>0 && i===lives);
     }
     for(let s of shards) s.draw();
 
@@ -433,11 +534,11 @@ function draw(){
     ctx.restore();
 
     ctx.textAlign='center';
-    ctx.font=`bold ${Math.min(W()/12,46)}px Segoe UI Emoji`;
+    ctx.font=`bold ${Math.min(W()/10, 34)}px Segoe UI Emoji`;
     ctx.fillStyle='#ff6488';
     ctx.fillText('💔 You Lost, Pragya! 💔', W()/2, H()/2-100);
 
-    ctx.font=`${Math.min(W()/18,28)}px Segoe UI Emoji`;
+    ctx.font=`${Math.min(W()/16, 20)}px Segoe UI Emoji`;
     ctx.fillStyle='#ffccff';
     ctx.fillText(`🫧 Bubbles Popped: ${score}`, W()/2, H()/2-45);
 
@@ -445,10 +546,10 @@ function draw(){
     ctx.fillStyle = newHS ? '#ffdc50' : '#c8b4ff';
     ctx.fillText(newHS ? '🏆 NEW HIGH SCORE!' : `🏆 Best: ${highScore}`, W()/2, H()/2+5);
 
-    ctx.font=`${Math.min(W()/22,20)}px Segoe UI Emoji`;
+    ctx.font=`${Math.min(W()/20, 16)}px Segoe UI Emoji`;
     ctx.fillStyle='#ffc8e6';
     ctx.fillText("But you're still perfect 💖", W()/2, H()/2+50);
-    ctx.fillText('Tap anywhere to try again!', W()/2, H()/2+78);
+    ctx.fillText('Tap anywhere to try again!', W()/2, H()/2+82);
   }
 }
 
