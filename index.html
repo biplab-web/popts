@@ -183,7 +183,7 @@ class Bubble {
   reset(){
     this.r  = rndI(18,40);
     this.x  = rnd(this.r, W()-this.r);
-    this.y  = H() + this.r + rnd(0,200);
+    this.y  = rnd(this.r, H()-this.r);
     this.vy = rnd(0.3,0.8)*this.sm;
     this.vx = rnd(-0.4,0.4);
     this.col= COLORS[rndI(0,COLORS.length-1)];
@@ -195,7 +195,22 @@ class Bubble {
     this.wb+=0.03;
     this.x += this.vx + Math.sin(this.wb)*0.4;
     this.y -= this.vy;
-    if(this.y+this.r < 0 && !this.missed) this.missed=true;
+
+    if(this.x - this.r < 0){
+      this.x = this.r;
+      this.vx = Math.abs(this.vx);
+    } else if(this.x + this.r > W()){
+      this.x = W() - this.r;
+      this.vx = -Math.abs(this.vx);
+    }
+
+    if(this.y - this.r < 0){
+      this.y = this.r;
+      this.vy = Math.abs(this.vy);
+    } else if(this.y + this.r > H()){
+      this.y = H() - this.r;
+      this.vy = -Math.abs(this.vy);
+    }
   }
   draw(){
     ctx.save();
@@ -358,6 +373,9 @@ let lives=3, score=0, missedCount=0, speedMult=1, highScore=loadHS();
 let shakeTimer=0;
 let gameoverBubbles=[];
 let started=false;
+let lastTapTime=0;
+let tapPulse=0;
+let pauseHintVisible=true;
 
 function initGame(){
   bubbles=[]; particles=[]; messages=[]; shards=[];
@@ -372,12 +390,18 @@ initGame();
 
 // ── Input ──────────────────────────────────────────────────────────────────
 async function handleTap(cx,cy){
+  const now=Date.now();
+  if(now-lastTapTime<120) return;
+  lastTapTime=now;
+  tapPulse=10;
+
   // unlock audio on first tap so mobile browsers allow playback
   if(!started){
     started=true;
     await unlockAudio();
   }
   if(state==='playing'){
+    pauseHintVisible=false;
     for(let b of bubbles){
       if(b.hit(cx,cy)){
         for(let i=0;i<12;i++) particles.push(new Particle(b.x,b.y,b.col));
@@ -423,6 +447,7 @@ function update(){
   shards    = shards.filter(s=>s.life>0);
   for(let s of shards) s.update();
   if(shakeTimer>0) shakeTimer--;
+  if(tapPulse>0) tapPulse--;
 
   if(state==='title'){
     titleTimer--;
@@ -494,6 +519,9 @@ function draw(){
     ctx.font=`${Math.min(W()/20, 16)}px Segoe UI Emoji`;
     ctx.fillStyle='#ffc8e6';
     ctx.fillText('Tap to begin and pop your way to joy 💖', W()/2, H()/2+48);
+    ctx.font=`${Math.min(W()/24, 13)}px Segoe UI Emoji`;
+    ctx.fillStyle='rgba(255,255,255,0.75)';
+    ctx.fillText('Tip: keep your taps gentle and playful 🌈', W()/2, H()/2+78);
     ctx.restore();
 
   } else if(state==='playing'){
@@ -521,6 +549,20 @@ function draw(){
     const heartX = W()-112;
     for(let i=0;i<3;i++){
       drawHeart(heartX + i*34, 46, 12, i<lives, shakeTimer>0 && i===lives);
+    }
+
+    if(pauseHintVisible){
+      ctx.save();
+      ctx.globalAlpha=0.8;
+      ctx.fillStyle='rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.roundRect(16, H()-64, W()-32, 44, 16);
+      ctx.fill();
+      ctx.textAlign='center';
+      ctx.font=`${Math.max(12, Math.min(W()/26, 13))}px Segoe UI Emoji`;
+      ctx.fillStyle='#fff4ff';
+      ctx.fillText('Tap bubbles gently — they like a little love 💖', W()/2, H()-36);
+      ctx.restore();
     }
     for(let s of shards) s.draw();
 
