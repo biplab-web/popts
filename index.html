@@ -196,19 +196,22 @@ class Bubble {
     this.x += this.vx + Math.sin(this.wb)*0.4;
     this.y -= this.vy;
 
-    if(this.x - this.r < 0){
+    const maxX = W() - this.r;
+    const maxY = H() - this.r;
+
+    if(this.x < this.r){
       this.x = this.r;
       this.vx = Math.abs(this.vx);
-    } else if(this.x + this.r > W()){
-      this.x = W() - this.r;
+    } else if(this.x > maxX){
+      this.x = maxX;
       this.vx = -Math.abs(this.vx);
     }
 
-    if(this.y - this.r < 0){
+    if(this.y < this.r){
       this.y = this.r;
       this.vy = Math.abs(this.vy);
-    } else if(this.y + this.r > H()){
-      this.y = H() - this.r;
+    } else if(this.y > maxY){
+      this.y = maxY;
       this.vy = -Math.abs(this.vy);
     }
   }
